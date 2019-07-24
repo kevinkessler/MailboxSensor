@@ -1,0 +1,39 @@
+{
+  "build": {
+    "cpu": "cortex-m0plus",
+    "extra_flags": "-DSTM32L031xx",
+    "f_cpu": "32000000L",
+    "mcu": "stm32l031f4p6",
+    "variant": "stm32l0"
+  },
+  "debug": {
+    "default_tools": [
+      "stlink"
+    ],
+    "jlink_device": "STM32L031F4",
+    "onboard_tools": [
+      "stlink"
+    ],
+    "openocd_target": "stm32l0",
+    "svd_path": "STM32L0x1.svd"
+  },
+  "frameworks": [
+    "arduino",
+    "mbed",
+    "stm32cube"
+  ],
+  "name": "Generic L031F4",
+  "upload": {
+    "maximum_ram_size": 8192,
+    "maximum_size": 16384,
+    "protocol": "stlink",
+    "protocols": [
+      "jlink",
+      "stlink",
+      "blackmagic",
+      "mbed"
+    ]
+  },
+  "url": "https://www.st.com/content/ccc/resource/technical/document/datasheet/aa/5d/77/ad/1a/59/4a/b9/DM00140359.pdf/files/DM00140359.pdf/jcr:content/translations/en.DM00140359.pdf",
+  "vendor": "ST"
+}
