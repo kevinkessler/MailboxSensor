@@ -33,17 +33,17 @@ volatile uint8_t adcConversionComplete=0;
 
 // Todo: ADC Low power mode 
 static uint16_t* readADC(uint16_t *adcCount){
-
+    
 	//Wait until ADC is fully powered up, probably not necessary
 	while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VREFINTRDY));
+    
+    uint16_t adcValues[4];
 
-    uint16_t adcValues[3];
-
-    // Power up the Flag sensor
-    HAL_GPIO_WritePin(FLAG_GPIO_Port, FLAG_Pin, GPIO_PIN_SET);
+    // Open Drain on to provide ground for the Flag Sensor and Battery sensor current to flow
+    HAL_GPIO_WritePin(ADC_GND_GPIO_Port, ADC_GND_Pin, GPIO_PIN_RESET);
     adcConversionComplete = 0;
-	HAL_ADC_Start_DMA(_hadc, (uint32_t *)adcValues, 3);
 
+	HAL_ADC_Start_DMA(_hadc, (uint32_t *)adcValues, 4);
     uint16_t timeoutCounter = 0;
     uint8_t timeoutError = 0;
     // At 2.097Mhz, each loop takes about 27 uS and the ADC normally completes in 300uS
@@ -60,18 +60,32 @@ static uint16_t* readADC(uint16_t *adcCount){
         adcCount[2] =  0xFFFF;
 
     } else {
-        adcCount[0] = adcValues[0];
+
+        adcCount[0] = adcValues[1];
 
         
-        uint16_t batt = (3000 * (*VREFINT_CAL_ADDR))/adcValues[1];
-        // Send battery Voltage in 1 count = .01 V, with 1.50V subtracted off to keep it in one byte
-        adcCount[1] = (300 * (*VREFINT_CAL_ADDR))/adcValues[1] - 150;
+        uint16_t batt = (3000 * (*VREFINT_CAL_ADDR))/adcValues[2];
+    
+        // Send battery Voltage in hundredths of V, with 2V subtracted off to keep it in one byte. Actual Voltage = adcCount[1] / 100 + 2V
+        // External battey is measure through a resistor divider so the uC ADC gets 1/2 the battery voltage
+        // Each adc Count  = battery voltage /4096 (max 2^12) * total counts on the adc. This returns the vaule in .001V steps
+        // Divide that by 10 to get .01V steps and multiply by 2 to get the actual voltage because of the divider, so divide by 5.
+        // divide by 4096 is the same as >>12, and the +5 is crude rounding, subtract 150 to create a measureable voltage range of 
+        // 2V to 4.55V, a range you would expect a Li Ion battery to be in.
+        adcCount[1] = ((((batt * adcValues[0]) >> 12) ) / 5);
+        if (adcCount[1] > 200)
+            adcCount[1] -= 200;
+        else
+            adcCount[1] = 0;
+        
+        
 
         // Scale the temperature count to the actual battery voltage to 3 V the factory calibration occured at
         // Multiply by 1000 to avoid having to use floating point and running out of memory
         // and calculate slope at 1000X as well. Since I'm sending the value in .5 degree increments,
         // just divide by 500
-        uint16_t adjTempCount = (1000*batt*adcValues[2])/(3000000);
+        // Actual temperature = adcCount[2] / 2 - 30
+        uint16_t adjTempCount = (1000*batt*adcValues[3])/(3000000);
         uint32_t slope = (1000 * (130 - 30))/(*(TS_CAL2_ADDR)- *(TS_CAL1_ADDR));
         int16_t temp = ((slope * (adjTempCount-*(TS_CAL1_ADDR))) +30000) / 500;
 
@@ -82,12 +96,12 @@ static uint16_t* readADC(uint16_t *adcCount){
             temp=0;
         } else if(temp > 195) {
         // 97.5 in 1/2 degree increments
-            //temp=0xfE;
+            temp=0xfE;
         } else {
         //Make the number unsigned
             temp+=60;
         }
-        adcCount[2] =  (uint16_t) temp;
+        adcCount[2] =  (uint16_t) temp; 
     }
 
 	return adcCount;
@@ -102,12 +116,24 @@ void pollMailbox() {
     readADC(adcCount);
 
     uint16_t proximity_count = VCNL4200_getProximity();
-    uint8_t buffer[7];
+    uint8_t buffer[4];
     buffer[0] = proximity_count & 0xff;
     buffer[1] = (adcCount[0] >> 4);
     buffer[2] = (adcCount[1] & 0xff);
     buffer[3] = (adcCount[2] & 0xff);
+
     E32_Transmit(buffer,4);
+    
+    HAL_PWREx_DisableUltraLowPower();
+    HAL_PWREx_EnableFastWakeUp();
+
+    if(__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET)
+        __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+
+    HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
+    HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1);
+    HAL_PWR_EnterSTANDBYMode();
 }
 
 void initMailbox(UART_HandleTypeDef *hu, I2C_HandleTypeDef *hi, ADC_HandleTypeDef *ha) {

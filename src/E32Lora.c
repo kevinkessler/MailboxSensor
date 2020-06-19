@@ -62,7 +62,6 @@ static E32_STATUS E32_ConfigResponse(uint8_t *response, uint8_t responseLength)
 	if ((error = E32_WaitForAux(0)) != E32_OK)
 		return error;
 
-	HAL_GPIO_TogglePin(D2_GPIO_Port, D2_Pin);
 	HAL_StatusTypeDef status = HAL_UART_Receive(_huart, response, responseLength, 2000);
 	if (status == HAL_TIMEOUT)
 		return E32_TIMEOUT;

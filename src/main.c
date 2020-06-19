@@ -75,7 +75,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   } else if(GPIO_Pin == DOOR_Pin) {
     if(HAL_GPIO_ReadPin(DOOR_GPIO_Port,DOOR_Pin) == 0) { 
       _doorTriggered = 1;
-      HAL_GPIO_TogglePin(D2_GPIO_Port, D2_Pin);
     }
   }
 }
@@ -126,15 +125,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    while(!_doorTriggered);
+    /*while(!_doorTriggered);
     HAL_Delay(500);
     if(HAL_GPIO_ReadPin(DOOR_GPIO_Port,DOOR_Pin) == 0) {
       HAL_GPIO_TogglePin(D2_GPIO_Port, D2_Pin);
       pollMailbox();
     }
-    _doorTriggered=0;
-    //
-	  //HAL_Delay(2000);
+    _doorTriggered=0;*/
+    pollMailbox();
+	  HAL_Delay(2000);
   }
   /* USER CODE END 3 */
 }
@@ -227,8 +226,15 @@ static void MX_ADC_Init(void)
   }
   /** Configure for the selected ADC regular channel to be converted. 
   */
-  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Channel = ADC_CHANNEL_1;
   sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
+  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure for the selected ADC regular channel to be converted. 
+  */
+  sConfig.Channel = ADC_CHANNEL_5;
   if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -359,24 +365,45 @@ static void MX_GPIO_Init(void)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, FLAG_Pin|D2_Pin|M1_Pin|M0_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(ADC_GND_GPIO_Port, ADC_GND_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pins : FLAG_Pin D2_Pin M1_Pin M0_Pin */
-  GPIO_InitStruct.Pin = FLAG_Pin|D2_Pin|M1_Pin|M0_Pin;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(V5_ENABLE_GPIO_Port, V5_ENABLE_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, M1_Pin|M0_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : ADC_GND_Pin */
+  GPIO_InitStruct.Pin = ADC_GND_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(ADC_GND_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : V5_ENABLE_Pin */
+  GPIO_InitStruct.Pin = V5_ENABLE_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(V5_ENABLE_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : AUX_Pin */
   GPIO_InitStruct.Pin = AUX_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(AUX_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : M1_Pin M0_Pin */
+  GPIO_InitStruct.Pin = M1_Pin|M0_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : DOOR_Pin */
   GPIO_InitStruct.Pin = DOOR_Pin;
@@ -396,7 +423,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* AdcHandle) {
   adcConversionComplete = 1;
-  HAL_GPIO_WritePin(FLAG_GPIO_Port, FLAG_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(ADC_GND_GPIO_Port, ADC_GND_Pin, GPIO_PIN_SET);
 }
 /* USER CODE END 4 */
 
