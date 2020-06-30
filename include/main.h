@@ -67,8 +67,8 @@ void Error_Handler(void);
 #define AUX_Pin GPIO_PIN_4
 #define AUX_GPIO_Port GPIOA
 #define AUX_EXTI_IRQn EXTI4_15_IRQn
-#define FLAG_ADC_Pin GPIO_PIN_5
-#define FLAG_ADC_GPIO_Port GPIOA
+#define TEST_Pin GPIO_PIN_5
+#define TEST_GPIO_Port GPIOA
 #define M1_Pin GPIO_PIN_6
 #define M1_GPIO_Port GPIOA
 #define M0_Pin GPIO_PIN_7

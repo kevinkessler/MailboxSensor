@@ -51,8 +51,9 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-extern uint8_t adcConversionComplete;
+extern volatile uint8_t adcConversionComplete;
 volatile uint8_t _doorTriggered=0;
+uint32_t adc_cal = 0xAABBCCDD;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -114,7 +115,15 @@ int main(void)
   MX_USART2_UART_Init();
   MX_ADC_Init();
   /* USER CODE BEGIN 2 */
-  HAL_ADCEx_Calibration_Start(&hadc,ADC_SINGLE_ENDED);
+  
+  //HAL_ADCEx_Calibration_Start(&hadc,ADC_SINGLE_ENDED);
+	//adc_cal = HAL_ADCEx_Calibration_GetValue(&hadc, ADC_SINGLE_ENDED);
+  // Manually got the adc_cal value and entered it here. Once reset is not happening every hour (just wake), it will be calibrated only on reset
+  // and stored in RTC backup register
+  __HAL_ADC_ENABLE(&hadc);
+  adc_cal = 0x41;
+  HAL_ADCEx_Calibration_SetValue(&hadc, ADC_SINGLE_ENDED, adc_cal);
+
   initMailbox(&huart2, &hi2c1, &hadc);
   /* USER CODE END 2 */
 
@@ -205,7 +214,7 @@ static void MX_ADC_Init(void)
   */
   hadc.Instance = ADC1;
   hadc.Init.OversamplingMode = DISABLE;
-  hadc.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV1;
   hadc.Init.Resolution = ADC_RESOLUTION_12B;
   hadc.Init.SamplingTime = ADC_SAMPLETIME_12CYCLES_5;
   hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
@@ -217,7 +226,7 @@ static void MX_ADC_Init(void)
   hadc.Init.DMAContinuousRequests = DISABLE;
   hadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc.Init.Overrun = ADC_OVR_DATA_PRESERVED;
-  hadc.Init.LowPowerAutoWait = DISABLE;
+  hadc.Init.LowPowerAutoWait = ENABLE;
   hadc.Init.LowPowerFrequencyMode = ENABLE;
   hadc.Init.LowPowerAutoPowerOff = DISABLE;
   if (HAL_ADC_Init(&hadc) != HAL_OK)
@@ -228,13 +237,6 @@ static void MX_ADC_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_1;
   sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
-  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /** Configure for the selected ADC regular channel to be converted. 
-  */
-  sConfig.Channel = ADC_CHANNEL_5;
   if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -376,7 +378,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(V5_ENABLE_GPIO_Port, V5_ENABLE_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, M1_Pin|M0_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, TEST_Pin|M1_Pin|M0_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : ADC_GND_Pin */
   GPIO_InitStruct.Pin = ADC_GND_Pin;
@@ -398,8 +400,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(AUX_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : M1_Pin M0_Pin */
-  GPIO_InitStruct.Pin = M1_Pin|M0_Pin;
+  /*Configure GPIO pins : TEST_Pin M1_Pin M0_Pin */
+  GPIO_InitStruct.Pin = TEST_Pin|M1_Pin|M0_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -421,7 +423,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* AdcHandle) {
+void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef* AdcHandle) {
   adcConversionComplete = 1;
   HAL_GPIO_WritePin(ADC_GND_GPIO_Port, ADC_GND_Pin, GPIO_PIN_SET);
 }
