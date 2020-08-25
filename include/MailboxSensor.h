@@ -29,5 +29,6 @@
 #define TS_CAL2_ADDR     ((uint16_t*) ((uint32_t) 0x1FF8007E))
 
 void pollMailbox(void);
-void initMailbox(UART_HandleTypeDef *hu, I2C_HandleTypeDef *hi, ADC_HandleTypeDef *ha);
+void initMailbox(UART_HandleTypeDef *hu, I2C_HandleTypeDef *hi, ADC_HandleTypeDef *ha, RTC_HandleTypeDef *rc);
+void powerTest(void);
 #endif /* INC_MAILBOXSENSOR_H_ */

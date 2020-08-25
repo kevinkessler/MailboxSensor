@@ -8,7 +8,12 @@
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the GNU General Public License as published by
- *    the Free Software Foundation, either version 3 of the License, or
+ *    the Free Software Founda    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    GPIO_InitStruct.Pin = GPIO_PIN_0;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);tion, either version 3 of the License, or
  *    (at your option) any later version.
  *
  *    This program is distributed in the hope that it will be useful,
@@ -28,6 +33,7 @@
 static UART_HandleTypeDef *_huart;
 static I2C_HandleTypeDef *_hi2c;
 static ADC_HandleTypeDef *_hadc;
+static RTC_HandleTypeDef *_hrtc;
 
 volatile uint8_t adcConversionComplete=0;
 
@@ -126,6 +132,8 @@ static uint16_t* readADC(uint16_t *adcCount){
 
 void pollMailbox() {
     uint16_t adcCount[3];
+
+
     VCNL4200_initialize(_hi2c);
     VCNL4200_WriteRegister(VCNL4200_PS_CONF3_MS_REG,0b01001100,0b00000000);
     
@@ -137,10 +145,13 @@ void pollMailbox() {
     //uint16_t proximity_count = 6;
     uint16_t proximity_count = VCNL4200_getProximity();
     
-    // Shutdown
-    //VCNL4200_WriteRegister(VCNL4200_ALS_CONF_REG,0b00000001, 0b00000000);
+    //Turn off 5V power
+    HAL_GPIO_WritePin(V5_ENABLE_GPIO_Port, V5_ENABLE_Pin, GPIO_PIN_SET);
+
+    // Shutdown VCNL$200
     VCNL4200_WriteRegister(VCNL4200_PS_CONF1_CONF2_REG,0b01001001,0b00000000); 
-    //VCNL4200_WriteRegister(VCNL4200_PS_CONF3_MS_REG,0b00000000,0b00000000);
+   
+
 
     uint8_t buffer[4];
     buffer[0] = proximity_count & 0xff;
@@ -164,11 +175,44 @@ void pollMailbox() {
     HAL_PWR_EnterSTANDBYMode();
 }
 
-void initMailbox(UART_HandleTypeDef *hu, I2C_HandleTypeDef *hi, ADC_HandleTypeDef *ha) {
+void sleepDelay(uint16_t delaytime){
+
+	if(delaytime < 10) {
+		HAL_Delay(delaytime);
+		return;
+	}
+	else {
+		if(HAL_RTCEx_DeactivateWakeUpTimer(_hrtc) != HAL_OK) {
+			HAL_Delay(delaytime);
+			return;
+		}
+		__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
+		uint32_t counter = (uint32_t)(delaytime * 1000) /432;
+		if(HAL_RTCEx_SetWakeUpTimer_IT(_hrtc, (uint16_t)counter, RTC_WAKEUPCLOCK_RTCCLK_DIV16)!=HAL_OK) {
+			HAL_Delay(delaytime);
+			return;
+		}
+
+		HAL_SuspendTick();
+		HAL_PWR_EnterSTOPMode(PWR_MAINREGULATOR_ON, PWR_STOPENTRY_WFI);
+		HAL_ResumeTick();
+
+	}
+
+}
+
+void initMailbox(UART_HandleTypeDef *hu, I2C_HandleTypeDef *hi, ADC_HandleTypeDef *ha, RTC_HandleTypeDef *rc) {
     _huart = hu;
     _hi2c = hi;
     _hadc = ha;
+    _hrtc = rc;
 
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    GPIO_InitStruct.Pin = GPIO_PIN_0;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
     
     E32_Init(M0_GPIO_Port, M0_Pin, M1_GPIO_Port, M1_Pin, AUX_GPIO_Port, AUX_Pin, _huart);
 
@@ -185,6 +229,89 @@ void initMailbox(UART_HandleTypeDef *hu, I2C_HandleTypeDef *hi, ADC_HandleTypeDe
     // Powering up the E32 run at 13.5mA for about 2 seconds, and then setting E32 to sleep drops the 
     // current consumption to .5 mA for the remaining 2 seconds of the delay
     E32_SetMode(SLEEP_MODE);
-    HAL_Delay(4000);
-	
+
+    uint16_t counter=0;
+    uint16_t comparitor = 120;
+    while(1) {
+        if(HAL_GPIO_ReadPin(GPIOA,GPIO_PIN_0) == 0) 
+            break;
+        
+//        sleepDelay(1000);
+        if(counter++ > comparitor) {
+            counter=0;
+            if(comparitor < 601) 
+                comparitor+=60;
+
+            uint16_t adcCount[3];
+            E32_SetMode(NORMAL_MODE);
+            readADC(adcCount);
+
+
+            uint8_t buffer[4];
+            buffer[0] = 0xff;
+            buffer[1] = 0xff;
+            buffer[2] = (adcCount[1] & 0xff);
+            buffer[3] = (adcCount[2] & 0xff);
+        
+            E32_Transmit(buffer,4);
+
+            E32_SetMode(SLEEP_MODE);
+
+        }
+        HAL_Delay(1000);
+    }
+
+    HAL_Delay(1500);
+    //Turn on 5V power
+    HAL_GPIO_WritePin(V5_ENABLE_GPIO_Port, V5_ENABLE_Pin, GPIO_PIN_RESET);
+    // Give a little time for the 5V to charge up the cap.
+    HAL_Delay(500);
+
+}
+
+void powerTest() {
+    uint8_t config[] = {0xc0,0x00,0x02,0x1b,0x0f,0xC6};
+
+    uint16_t adcCount[3];
+
+    E32_SetMode(NORMAL_MODE);
+    VCNL4200_initialize(_hi2c);
+    VCNL4200_WriteRegister(VCNL4200_PS_CONF3_MS_REG,0b01001100,0b00000000);
+
+
+    while(1) {
+        for (int n=0;n<4;n++) {
+            switch (n)
+            {
+            case 0:
+                config[5] = 0xc4;
+                break;
+            case 1:
+                config[5] = 0xc5;
+                break;
+            case 2:
+                config[5] = 0xc6;
+                break;
+            case 3:
+                config[5] = 0xc7;
+            default:
+                break;
+            }
+            E32_SetConfig(config);
+        
+
+            readADC(adcCount);
+            uint16_t proximity_count = VCNL4200_getProximity();
+            uint8_t buffer[4];
+            buffer[0] = proximity_count & 0xff;
+            buffer[1] = (uint8_t)(proximity_count  >> 8);
+            buffer[2] = (adcCount[1] & 0xff);
+            buffer[3] = config[5];
+    
+            E32_Transmit(buffer,4);
+            VCNL4200_WriteRegister(VCNL4200_PS_CONF3_MS_REG,0b01001100,0b00000000);
+            HAL_Delay(1000);
+        }
+
+    }
 }
